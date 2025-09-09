@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:peer_to_peer_learning_network/role_selection_page.dart';
+import 'package:peer_to_peer_learning_network/splash_page.dart';
 
 void main() {
   runApp(const OfflineLearningApp());
@@ -18,7 +18,7 @@ class OfflineLearningApp extends StatelessWidget {
         useMaterial3: true,
       ),
       debugShowCheckedModeBanner: false,
-      home: const RoleSelectionPage(),
+      home: const SplashPage(),
     );
   }
 }

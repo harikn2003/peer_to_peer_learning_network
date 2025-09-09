@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:peer_to_peer_learning_network/screens/student/home_page.dart' as student;
-import 'package:peer_to_peer_learning_network/screens/teacher/pin_login_page.dart' as teacher;
+import 'package:peer_to_peer_learning_network/splash_page.dart'; // Assuming UserRole is here or in a shared file
+import 'package:peer_to_peer_learning_network/screens/common/registration_page.dart';
 
 class RoleSelectionPage extends StatelessWidget {
   const RoleSelectionPage({super.key});
@@ -8,51 +8,83 @@ class RoleSelectionPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[200],
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.cast_for_education, size: 80, color: Colors.indigo),
-            const SizedBox(height: 20),
-            const Text(
-              'Welcome to the Learning Hub',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.blue.shade200,
+              Colors.purple.shade200,
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView( // Added for responsiveness on smaller screens
+              padding: const EdgeInsets.all(32.0), // Increased padding
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.school_outlined, // Changed icon for a slightly different feel
+                    size: 90, // Slightly larger icon
+                    color: Colors.white, // Changed from Colors.white70
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Welcome to Learning Hub!', // Simplified text
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 32, // Increased font size
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white, // Kept as Colors.white for strong contrast
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Select your role to get started.', // Simplified text
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 18, color: Colors.white.withOpacity(0.9)),
+                  ),
+                  const SizedBox(height: 60), // Increased spacing
+                  _buildRoleCard(
+                    context: context,
+                    title: 'I am a Teacher',
+                    icon: Icons.auto_stories_rounded, // Changed icon
+                    color: Colors.white,
+                    textColor: Colors.blue.shade700,
+                    iconColor: Colors.blue.shade600,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) =>
+                                const RegistrationPage(role: UserRole.teacher)),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 24), // Increased spacing
+                  _buildRoleCard(
+                    context: context,
+                    title: 'I am a Student',
+                    icon: Icons.lightbulb_outline_rounded, // Changed icon
+                    color: Colors.white,
+                    textColor: Colors.purple.shade700,
+                    iconColor: Colors.purple.shade600,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) =>
+                                const RegistrationPage(role: UserRole.student)),
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 10),
-            const Text(
-              'Please select your role to continue',
-              style: TextStyle(fontSize: 16, color: Colors.black54),
-            ),
-            const SizedBox(height: 50),
-            // Teacher Role Card
-            _buildRoleCard(
-              context: context,
-              icon: Icons.school,
-              title: 'I am a Teacher',
-              color: Colors.blue,
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const teacher.PinLoginPage()),
-                );
-              },
-            ),
-            const SizedBox(height: 20),
-            // Student Role Card
-            _buildRoleCard(
-              context: context,
-              icon: Icons.person,
-              title: 'I am a Student',
-              color: Colors.teal,
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const student.StudentHomePage()),
-                );
-              },
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -60,36 +92,43 @@ class RoleSelectionPage extends StatelessWidget {
 
   Widget _buildRoleCard({
     required BuildContext context,
-    required IconData icon,
     required String title,
-    required Color color,
+    required IconData icon,
+    required Color color, // This will be card background
+    required Color textColor,
+    required Color iconColor,
     required VoidCallback onTap,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Card(
-        elevation: 5,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        child: Container(
-          width: MediaQuery.of(context).size.width * 0.75,
-          padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 20),
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(15),
-          ),
+    return Card(
+      elevation: 5, // Increased elevation for more shadow
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)), // More rounded corners
+      color: color,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20), // Match card's border radius
+        splashColor: iconColor.withOpacity(0.1), // Themed splash color
+        highlightColor: iconColor.withOpacity(0.05), // Themed highlight color
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 24), // Adjusted padding
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 40, color: Colors.white),
-              const SizedBox(width: 20),
-              Text(
-                title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
+              CircleAvatar(
+                radius: 28, // Slightly larger avatar
+                backgroundColor: iconColor.withOpacity(0.15), // Softer background for avatar
+                child: Icon(icon, size: 30, color: iconColor), // Icon color parameter
+              ),
+              const SizedBox(width: 24),
+              Expanded( // Use Expanded to ensure text wraps if too long
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 20, // Increased font size
+                    fontWeight: FontWeight.w600, // Adjusted font weight
+                    color: textColor, // Text color parameter
+                  ),
                 ),
               ),
+              Icon(Icons.arrow_forward_ios_rounded, color: textColor.withOpacity(0.7)),
             ],
           ),
         ),

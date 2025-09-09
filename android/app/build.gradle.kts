@@ -8,7 +8,7 @@ plugins {
 android {
     namespace = "com.project.p2pln.peer_to_peer_learning_network"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    ndkVersion = "27.0.12077973"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
