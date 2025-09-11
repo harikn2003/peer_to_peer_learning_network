@@ -19,25 +19,25 @@ class _SplashPageState extends State<SplashPage> {
 
   Future<void> _checkLoginStatus() async {
     final prefs = await SharedPreferences.getInstance();
-    final userRole = prefs.getString('userRole');
+    // CHANGED: Check for the last active role instead of a generic one
+    final lastActiveRole = prefs.getString('lastActiveRole');
 
-    // Wait for 2 seconds to show a splash screen
     await Future.delayed(const Duration(seconds: 2));
 
     if (!mounted) return;
 
-    if (userRole != null) {
-      // User is registered, go to Login Page
+    if (lastActiveRole != null) {
+      // A user was previously active, go to their Login Page
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
           builder: (context) => LoginPage(
-            role: userRole == 'teacher' ? UserRole.teacher : UserRole.student,
+            role: lastActiveRole == 'teacher' ? UserRole.teacher : UserRole.student,
           ),
         ),
       );
     } else {
-      // No user found, go to Role Selection
+      // No user has ever logged in, go to Role Selection
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const RoleSelectionPage()),
@@ -62,5 +62,5 @@ class _SplashPageState extends State<SplashPage> {
   }
 }
 
-// Define an enum for user roles to avoid typos
+// This enum is still very useful
 enum UserRole { teacher, student }

@@ -5,7 +5,6 @@ import 'package:peer_to_peer_learning_network/splash_page.dart';
 import 'package:peer_to_peer_learning_network/role_selection_page.dart';
 import 'package:peer_to_peer_learning_network/screens/teacher/home_page.dart' as teacher;
 import 'package:peer_to_peer_learning_network/screens/student/home_page.dart' as student;
-// Removed: import 'package:peer_to_peer_learning_network/screens/common/widgets/wave_clipper.dart';
 
 class LoginPage extends StatefulWidget {
   final UserRole role;
@@ -25,16 +24,25 @@ class _LoginPageState extends State<LoginPage> {
     _loadUserData();
   }
 
+  // LOGIC FIX 1: Loads role-specific user data
   Future<void> _loadUserData() async {
     final prefs = await SharedPreferences.getInstance();
+    final roleString = widget.role == UserRole.teacher ? 'teacher' : 'student';
     setState(() {
-      _userName = prefs.getString('userName') ?? 'User';
-      _storedPasscode = prefs.getString('userPasscode') ?? '';
+      _userName = prefs.getString('${roleString}_userName') ?? 'User';
+      _storedPasscode = prefs.getString('${roleString}_userPasscode') ?? '';
     });
   }
 
-  void _validatePasscode(String enteredPasscode) {
+  // LOGIC FIX 2: Saves the active role on successful login
+  Future<void> _validatePasscode(String enteredPasscode) async {
     if (enteredPasscode == _storedPasscode) {
+      final prefs = await SharedPreferences.getInstance();
+      final roleString = widget.role == UserRole.teacher ? 'teacher' : 'student';
+      await prefs.setString('lastActiveRole', roleString);
+
+      if (!mounted) return;
+
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
@@ -48,15 +56,16 @@ class _LoginPageState extends State<LoginPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Incorrect Passcode. Please try again.'),
-          behavior: SnackBarBehavior.floating, // Added for a more modern feel
+          behavior: SnackBarBehavior.floating,
         ),
       );
     }
   }
 
+  // LOGIC FIX 3: Safely switches role without deleting data
   Future<void> _resetAndGoToRoleSelection() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
+    await prefs.remove('lastActiveRole'); // Does NOT delete user profiles
 
     if (!mounted) return;
 
@@ -75,12 +84,12 @@ class _LoginPageState extends State<LoginPage> {
 
     final defaultPinTheme = PinTheme(
       width: 56,
-      height: 60, // Slightly increased height
+      height: 60,
       textStyle: TextStyle(fontSize: 22, color: primaryColor, fontWeight: FontWeight.w600),
       decoration: BoxDecoration(
-        color: Colors.white, // Filled background
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade300, width: 1), // Subtle border
+        border: Border.all(color: Colors.grey.shade300, width: 1),
       ),
     );
 
@@ -90,12 +99,6 @@ class _LoginPageState extends State<LoginPage> {
       ),
     );
 
-    // final errorPinTheme = defaultPinTheme.copyWith(
-    //   decoration: defaultPinTheme.decoration!.copyWith(
-    //     border: Border.all(color: Colors.redAccent, width: 2),
-    //   ),
-    // );
-
     return Scaffold(
       backgroundColor: Colors.grey.shade100,
       body: SingleChildScrollView(
@@ -104,40 +107,35 @@ class _LoginPageState extends State<LoginPage> {
             Stack(
               alignment: Alignment.center,
               children: [
-                Container( // Replaced ClipPath with Container
-                  height: 280, // Adjusted height
+                Container(
+                  height: 280,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [primaryColor, secondaryColor],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
-                    borderRadius: const BorderRadius.only( // Added rounded corners
+                    borderRadius: const BorderRadius.only(
                       bottomLeft: Radius.circular(40),
                       bottomRight: Radius.circular(40),
                     ),
                   ),
                 ),
-                AppBar( // Kept AppBar for potential back navigation or title in future
+                AppBar(
                   backgroundColor: Colors.transparent,
                   elevation: 0,
                   iconTheme: const IconThemeData(color: Colors.white),
-                  // If you expect navigation to this page, ensure a back button appears or add one.
-                  // leading: IconButton(
-                  //   icon: Icon(Icons.arrow_back_ios_new_rounded),
-                  //   onPressed: () => Navigator.of(context).pop(), // Example back navigation
-                  // ),
                 ),
                 Positioned(
-                  top: 100, // Adjusted position
+                  top: 100,
                   child: Column(
                     children: [
-                      Icon(isTeacher ? Icons.school_outlined : Icons.person_outline_rounded, size: 70, color: Colors.white), // Adjusted icon
+                      Icon(isTeacher ? Icons.school_outlined : Icons.person_outline_rounded, size: 70, color: Colors.white),
                       const SizedBox(height: 12),
                       const Text(
                         'Welcome Back!',
                         style: TextStyle(
-                          fontSize: 28, // Adjusted font size
+                          fontSize: 28,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
                         ),
@@ -147,9 +145,9 @@ class _LoginPageState extends State<LoginPage> {
                 ),
               ],
             ),
-            const SizedBox(height: 30), // Adjusted spacing
+            const SizedBox(height: 30),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0), // Added horizontal padding for content below header
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
               child: Column(
                 children: [
                   Text(
@@ -158,12 +156,12 @@ class _LoginPageState extends State<LoginPage> {
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 8),
-                  Text( // Removed const
+                  Text(
                     'Please enter your 4-digit passcode',
-                    style: TextStyle(fontSize: 16, color: Colors.grey.shade600), // Slightly darker grey
+                    style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 28), // Adjusted spacing
+                  const SizedBox(height: 28),
                   Pinput(
                     length: 4,
                     onCompleted: _validatePasscode,
@@ -171,18 +169,15 @@ class _LoginPageState extends State<LoginPage> {
                     animationCurve: Curves.easeIn,
                     defaultPinTheme: defaultPinTheme,
                     focusedPinTheme: focusedPinTheme,
-                    // errorPinTheme: errorPinTheme, // Optional: for error state
-                    // You might want to add a controller if you need to clear the Pinput programmatically
-                    // controller: _pinController,
                   ),
-                  const SizedBox(height: 35), // Adjusted spacing
+                  const SizedBox(height: 35),
                   TextButton(
                     onPressed: _resetAndGoToRoleSelection,
                     style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      )
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        )
                     ),
                     child: Text(
                       'Switch Role / Register New User',
@@ -192,7 +187,7 @@ class _LoginPageState extends State<LoginPage> {
                 ],
               ),
             ),
-            const SizedBox(height: 20), // Bottom padding
+            const SizedBox(height: 20),
           ],
         ),
       ),
