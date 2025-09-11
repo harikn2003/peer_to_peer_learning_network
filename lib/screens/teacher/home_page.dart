@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:peer_to_peer_learning_network/screens/teacher/create_quiz_page.dart';
 import 'package:peer_to_peer_learning_network/screens/teacher/content_management_page.dart';
+import 'package:peer_to_peer_learning_network/screens/teacher/sharing_session_page.dart';
 
 class TeacherHomePage extends StatefulWidget {
   const TeacherHomePage({super.key});
@@ -166,7 +167,12 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           title: 'Start Sharing',
           icon: Icons.wifi_tethering_rounded,
           color: Colors.indigo,
-          onTap: () {},
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SharingSessionPage()),
+              );
+            },
         ),
         _buildActionCard(
           title: 'Create Quiz',
