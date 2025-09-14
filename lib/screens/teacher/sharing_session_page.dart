@@ -1,9 +1,9 @@
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
-//import 'package:location/location.dart' hide PermissionStatus; // Hides conflicting class
 import 'package:nearby_connections/nearby_connections.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:location/location.dart' hide PermissionStatus;
 
 class SharingSessionPage extends StatefulWidget {
   const SharingSessionPage({super.key});
@@ -45,36 +45,27 @@ class _SharingSessionPageState extends State<SharingSessionPage> {
     });
   }
 
-  // UPDATED PERMISSION LOGIC BASED ON YOUR FORMAT
   Future<bool> _checkAndRequestPermissions() async {
-    // 1. Check Location Service Status
     if (!await Permission.location.serviceStatus.isEnabled) {
       if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please turn on your Location/GPS service.')));
-      // You could optionally open settings here for the user
       return false;
     }
-
-    // 2. Check Bluetooth Service Status
     if (!await Permission.bluetooth.serviceStatus.isEnabled) {
       if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please turn on your Bluetooth.')));
       return false;
     }
-
-    // 3. Request App-Level Permissions
     Map<Permission, PermissionStatus> statuses = await [
       Permission.location,
       Permission.bluetooth,
+      Permission.bluetoothScan,
       Permission.bluetoothAdvertise,
       Permission.bluetoothConnect,
-      Permission.bluetoothScan,
       Permission.nearbyWifiDevices,
     ].request();
-
     bool allGranted = statuses.values.every((status) => status.isGranted);
     if (!allGranted) {
       if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('All permissions must be granted to proceed.')));
     }
-
     return allGranted;
   }
 
@@ -90,7 +81,11 @@ class _SharingSessionPageState extends State<SharingSessionPage> {
       if (await _checkAndRequestPermissions()) {
         try {
           setState(() => _isSharing = true);
-          await Nearby().startAdvertising(
+
+          // ADDED: A print statement to verify the name before advertising
+          print("--- Broadcasting with name: $_teacherName ---");
+
+          bool started = await Nearby().startAdvertising(
             _teacherName,
             Strategy.P2P_STAR,
             onConnectionInitiated: _onConnectionInitiated,
@@ -104,6 +99,9 @@ class _SharingSessionPageState extends State<SharingSessionPage> {
             },
             serviceId: _serviceId,
           );
+          if(!started) {
+            setState(() => _isSharing = false);
+          }
         } catch (e) {
           print("Error starting advertising: $e");
           setState(() => _isSharing = false);
@@ -122,7 +120,6 @@ class _SharingSessionPageState extends State<SharingSessionPage> {
     });
   }
 
-  // --- The build method and its helpers remain the same ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(

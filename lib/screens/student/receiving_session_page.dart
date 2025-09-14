@@ -21,6 +21,7 @@ class _ReceivingSessionPageState extends State<ReceivingSessionPage> {
   final Map<String, String> _foundTeachers = {};
   bool _isSearching = false;
   String? _connectedTeacherId;
+  String _connectedTeacherName = '';
 
   @override
   void initState() {
@@ -109,9 +110,15 @@ class _ReceivingSessionPageState extends State<ReceivingSessionPage> {
         _studentName,
         teacherId,
         onConnectionInitiated: (id, info) {
+          setState(() {
+            _connectedTeacherName = info.endpointName;
+          });
           Nearby().acceptConnection(
             id,
-            onPayLoadRecieved: (endpointId, payload) {},
+            onPayLoadRecieved: (endpointId, payload) {
+              print("STUDENT: Payload received from $endpointId!");
+            },
+            onPayloadTransferUpdate: (endpointId, payloadInfo) {},
           );
         },
         onConnectionResult: (id, status) {
@@ -122,13 +129,20 @@ class _ReceivingSessionPageState extends State<ReceivingSessionPage> {
               _foundTeachers.clear();
               Nearby().stopDiscovery();
             });
+          } else {
+            // Handle connection failure
+            setState(() {
+              _connectedTeacherId = null;
+              _connectedTeacherName = '';
+            });
           }
         },
         onDisconnected: (id) {
           setState(() {
             _connectedTeacherId = null;
+            _connectedTeacherName = '';
           });
-          _startDiscovery();
+          _startDiscovery(); // Restart discovery after disconnection
         },
       );
     } catch (e) {
@@ -136,7 +150,6 @@ class _ReceivingSessionPageState extends State<ReceivingSessionPage> {
     }
   }
 
-  // --- The build methods remain the same ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -194,7 +207,7 @@ class _ReceivingSessionPageState extends State<ReceivingSessionPage> {
 
   Widget _buildConnectedView() {
     // A small fix to prevent a crash if the teacher name is not found
-    final teacherName = _foundTeachers[_connectedTeacherId] ?? _connectedTeacherId ?? 'Teacher';
+    //final teacherName = _foundTeachers[_connectedTeacherId] ?? _connectedTeacherId ?? 'Teacher';
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -202,7 +215,7 @@ class _ReceivingSessionPageState extends State<ReceivingSessionPage> {
           const Icon(Icons.check_circle_rounded, color: Colors.green, size: 80),
           const SizedBox(height: 16),
           Text(
-            'Connected to $teacherName!',
+            'Connected to $_connectedTeacherName!',
             style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
