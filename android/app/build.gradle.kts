@@ -8,6 +8,7 @@ plugins {
 android {
     namespace = "com.project.p2pln.peer_to_peer_learning_network"
     compileSdk = flutter.compileSdkVersion
+    //compileSdk = 35
     ndkVersion = "27.0.12077973"
 
     compileOptions {
@@ -24,10 +25,28 @@ android {
         applicationId = "com.project.p2pln.peer_to_peer_learning_network"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = 30
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+//        minSdk = 21
+//        targetSdk = 35 // Make sure this is 35
+//        versionCode = 1
+//        versionName = "1.0"
+        manifestPlaceholders += mapOf(
+            "usesPermission" to """
+            <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+            <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+            <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+            <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+            <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+            <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+            <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+            <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+            <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+            <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation" />
+        """.trimIndent()
+        )
     }
 
     buildTypes {
