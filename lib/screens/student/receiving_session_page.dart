@@ -1,7 +1,11 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
-import 'package:location/location.dart' hide PermissionStatus; // Hides conflicting class
+import 'package:location/location.dart' hide PermissionStatus;
 import 'package:nearby_connections/nearby_connections.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -14,7 +18,6 @@ class ReceivingSessionPage extends StatefulWidget {
 
 class _ReceivingSessionPageState extends State<ReceivingSessionPage> {
   String _studentName = '';
-  String _deviceId = '';
   bool _isDataLoaded = false;
   final String _serviceId = 'com.project.p2pln.p2p';
 
@@ -22,6 +25,12 @@ class _ReceivingSessionPageState extends State<ReceivingSessionPage> {
   bool _isSearching = false;
   String? _connectedTeacherId;
   String _connectedTeacherName = '';
+
+  String? _receivingFileName;
+  String? _receivingSubject;
+  double _transferProgress = 0.0;
+  final Map<int, String> _incomingFilePayloads = {};
+
 
   @override
   void initState() {
@@ -38,38 +47,25 @@ class _ReceivingSessionPageState extends State<ReceivingSessionPage> {
 
   Future<void> _loadDeviceAndUserData() async {
     final prefs = await SharedPreferences.getInstance();
-    final deviceInfo = DeviceInfoPlugin();
-    final androidInfo = await deviceInfo.androidInfo;
     setState(() {
       _studentName = prefs.getString('student_userName') ?? 'Student';
-      _deviceId = androidInfo.id;
       _isDataLoaded = true;
     });
     _startDiscovery();
   }
 
-  // UPDATED PERMISSION LOGIC TO MATCH THE TEACHER'S
   Future<bool> _checkAndRequestPermissions() async {
-    // 1. Check Location Service Status
     if (!await Permission.location.serviceStatus.isEnabled) {
       if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please turn on your Location/GPS service.')));
       return false;
     }
-
-    // 2. Check Bluetooth Service Status
     if (!await Permission.bluetooth.serviceStatus.isEnabled) {
       if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please turn on your Bluetooth.')));
       return false;
     }
-
-    // 3. Request App-Level Permissions
     Map<Permission, PermissionStatus> statuses = await [
-      Permission.location,
-      Permission.bluetooth,
-      Permission.bluetoothScan,
-      Permission.bluetoothAdvertise,
-      Permission.bluetoothConnect,
-      Permission.nearbyWifiDevices,
+      Permission.location, Permission.bluetooth, Permission.bluetoothScan,
+      Permission.bluetoothAdvertise, Permission.bluetoothConnect, Permission.nearbyWifiDevices,
     ].request();
 
     bool allGranted = statuses.values.every((status) => status.isGranted);
@@ -80,22 +76,13 @@ class _ReceivingSessionPageState extends State<ReceivingSessionPage> {
   }
 
   Future<void> _startDiscovery() async {
-    if (await _checkAndRequestPermissions()) { // Using the new function
+    if (await _checkAndRequestPermissions()) {
       try {
         setState(() => _isSearching = true);
         await Nearby().startDiscovery(
-          _studentName,
-          Strategy.P2P_STAR,
-          onEndpointFound: (id, name, serviceId) {
-            setState(() {
-              _foundTeachers[id] = name;
-            });
-          },
-          onEndpointLost: (id) {
-            setState(() {
-              _foundTeachers.remove(id);
-            });
-          },
+          _studentName, Strategy.P2P_STAR,
+          onEndpointFound: (id, name, serviceId) => setState(() => _foundTeachers[id] = name),
+          onEndpointLost: (id) => setState(() => _foundTeachers.remove(id)),
           serviceId: _serviceId,
         );
       } catch (e) {
@@ -110,16 +97,8 @@ class _ReceivingSessionPageState extends State<ReceivingSessionPage> {
         _studentName,
         teacherId,
         onConnectionInitiated: (id, info) {
-          setState(() {
-            _connectedTeacherName = info.endpointName;
-          });
-          Nearby().acceptConnection(
-            id,
-            onPayLoadRecieved: (endpointId, payload) {
-              print("STUDENT: Payload received from $endpointId!");
-            },
-            onPayloadTransferUpdate: (endpointId, payloadInfo) {},
-          );
+          setState(() => _connectedTeacherName = info.endpointName);
+          _acceptConnection(id);
         },
         onConnectionResult: (id, status) {
           if (status == Status.CONNECTED) {
@@ -130,19 +109,12 @@ class _ReceivingSessionPageState extends State<ReceivingSessionPage> {
               Nearby().stopDiscovery();
             });
           } else {
-            // Handle connection failure
-            setState(() {
-              _connectedTeacherId = null;
-              _connectedTeacherName = '';
-            });
+            setState(() { _connectedTeacherId = null; _connectedTeacherName = ''; });
           }
         },
         onDisconnected: (id) {
-          setState(() {
-            _connectedTeacherId = null;
-            _connectedTeacherName = '';
-          });
-          _startDiscovery(); // Restart discovery after disconnection
+          setState(() { _connectedTeacherId = null; _connectedTeacherName = ''; });
+          _startDiscovery();
         },
       );
     } catch (e) {
@@ -150,6 +122,103 @@ class _ReceivingSessionPageState extends State<ReceivingSessionPage> {
     }
   }
 
+  void _acceptConnection(String id) {
+    Nearby().acceptConnection(
+      id,
+      onPayLoadRecieved: (endpointId, payload) async {
+        if (payload.type == PayloadType.BYTES) {
+          final str = String.fromCharCodes(payload.bytes!);
+          try {
+            final metadata = jsonDecode(str);
+            if (metadata['type'] == 'metadata') {
+              setState(() {
+                _receivingFileName = metadata['filename'];
+                _receivingSubject = metadata['subject'];
+                _transferProgress = 0.0;
+              });
+            } else {
+              await _saveFileFromBytes(payload.bytes!);
+            }
+          } catch (e) {
+            await _saveFileFromBytes(payload.bytes!);
+          }
+        } else if (payload.type == PayloadType.FILE) {
+          if (payload.uri != null) {
+            _incomingFilePayloads[payload.id] = payload.uri!;
+          }
+        }
+      },
+      onPayloadTransferUpdate: (endpointId, payloadInfo) async {
+        setState(() {
+          if (payloadInfo.totalBytes > 0) {
+            _transferProgress = payloadInfo.bytesTransferred / payloadInfo.totalBytes;
+          }
+        });
+
+        if (payloadInfo.status == PayloadStatus.SUCCESS) {
+          final contentUri = _incomingFilePayloads.remove(payloadInfo.id);
+          if (contentUri != null) {
+            await _saveFileFromPath(contentUri);
+          }
+        } else if (payloadInfo.status == PayloadStatus.FAILURE || payloadInfo.status == PayloadStatus.CANCELED) {
+          setState(() {
+            _receivingFileName = null;
+            _receivingSubject = null;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('File transfer failed.')));
+        }
+      },
+    );
+  }
+
+  // THIS IS THE CORRECTED FUNCTION
+  Future<void> _saveFileFromPath(String contentUri) async {
+    if (_receivingFileName != null && _receivingSubject != null) {
+      final directory = await getApplicationDocumentsDirectory();
+      final notesDir = Directory('${directory.path}/notes/$_receivingSubject');
+      if (!await notesDir.exists()) {
+        await notesDir.create(recursive: true);
+      }
+
+      final destinationFilepath = '${notesDir.path}/$_receivingFileName';
+
+      // Use the correct helper method from the package
+      bool success = await Nearby().copyFileAndDeleteOriginal(contentUri, destinationFilepath);
+
+      if (success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Received $_receivingFileName successfully!')),
+        );
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to save the received file.')),
+        );
+      }
+
+      setState(() { _receivingFileName = null; _receivingSubject = null; });
+    }
+  }
+
+  Future<void> _saveFileFromBytes(Uint8List bytes) async {
+    if (_receivingFileName != null && _receivingSubject != null) {
+      final directory = await getApplicationDocumentsDirectory();
+      final quizzesDir = Directory('${directory.path}/quizzes/$_receivingSubject');
+      if (!await quizzesDir.exists()) {
+        await quizzesDir.create(recursive: true);
+      }
+      final file = File('${quizzesDir.path}/$_receivingFileName');
+      await file.writeAsBytes(bytes);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Received $_receivingFileName successfully!')),
+        );
+      }
+      setState(() { _receivingFileName = null; _receivingSubject = null; });
+    }
+  }
+
+  // --- The build methods remain the same ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -186,7 +255,7 @@ class _ReceivingSessionPageState extends State<ReceivingSessionPage> {
         const Divider(),
         Expanded(
           child: _foundTeachers.isEmpty
-              ? const Center(child: Text('No teachers found yet. Make sure the teacher has started a session.'))
+              ? const Center(child: Text('No teachers found yet.'))
               : ListView.builder(
             itemCount: _foundTeachers.length,
             itemBuilder: (context, index) {
@@ -206,24 +275,45 @@ class _ReceivingSessionPageState extends State<ReceivingSessionPage> {
   }
 
   Widget _buildConnectedView() {
-    // A small fix to prevent a crash if the teacher name is not found
-    //final teacherName = _foundTeachers[_connectedTeacherId] ?? _connectedTeacherId ?? 'Teacher';
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.check_circle_rounded, color: Colors.green, size: 80),
-          const SizedBox(height: 16),
-          Text(
-            'Connected to $_connectedTeacherName!',
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Waiting to receive files...',
-            style: TextStyle(fontSize: 16, color: Colors.grey),
-          ),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.check_circle_rounded, color: Colors.green, size: 80),
+            const SizedBox(height: 16),
+            Text(
+              'Connected to $_connectedTeacherName!',
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            if (_receivingFileName == null)
+              const Text(
+                'Waiting to receive files...',
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              )
+            else
+              Column(
+                children: [
+                  Text(
+                    'Receiving: $_receivingFileName',
+                    style: const TextStyle(fontSize: 16, color: Colors.black87),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 12),
+                  LinearProgressIndicator(
+                    value: _transferProgress,
+                    minHeight: 10,
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                  const SizedBox(height: 4),
+                  Text('${(_transferProgress * 100).toStringAsFixed(0)}%'),
+                ],
+              ),
+          ],
+        ),
       ),
     );
   }

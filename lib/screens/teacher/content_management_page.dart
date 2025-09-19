@@ -92,7 +92,7 @@ class _ContentManagementPageState extends State<ContentManagementPage> {
       // 1. Pick a file
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['pdf', 'mp4', 'txt'],
+        allowedExtensions: ['pdf', 'mp4', 'txt','jpg', 'jpeg', 'png'],
       );
 
       if (result == null || result.files.single.path == null) {
@@ -277,12 +277,18 @@ class _ContentManagementPageState extends State<ContentManagementPage> {
         IconData getIconForFile(String fileName) {
           if (fileName.endsWith('.pdf')) return Icons.picture_as_pdf_rounded;
           if (fileName.endsWith('.mp4')) return Icons.video_library_rounded;
+          if (fileName.toLowerCase().endsWith('.jpg') || fileName.toLowerCase().endsWith('.jpeg') || fileName.toLowerCase().endsWith('.png')) {
+            return Icons.image_rounded;
+          }
           return Icons.note_alt_rounded;
         }
 
         Color getColorForFile(String fileName) {
           if (fileName.endsWith('.pdf')) return Colors.red;
           if (fileName.endsWith('.mp4')) return Colors.orange;
+          if (fileName.toLowerCase().endsWith('.jpg') || fileName.toLowerCase().endsWith('.jpeg') || fileName.toLowerCase().endsWith('.png')) {
+            return Colors.purple;
+          }
           return Colors.blue;
         }
 

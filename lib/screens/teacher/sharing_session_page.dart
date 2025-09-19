@@ -1,9 +1,14 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:location/location.dart' hide PermissionStatus;
 import 'package:nearby_connections/nearby_connections.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:device_info_plus/device_info_plus.dart';
-import 'package:location/location.dart' hide PermissionStatus;
+import 'package:peer_to_peer_learning_network/models/quiz_models.dart';
 
 class SharingSessionPage extends StatefulWidget {
   const SharingSessionPage({super.key});
@@ -15,33 +20,60 @@ class SharingSessionPage extends StatefulWidget {
 class _SharingSessionPageState extends State<SharingSessionPage> {
   bool _isSharing = false;
   String _teacherName = '';
-  String _deviceId = '';
   bool _isDataLoaded = false;
   final String _serviceId = 'com.project.p2pln.p2p';
 
   final Map<String, String> _connectedStudents = {};
-
+  List<File> _contentFiles = []; // To store all shareable files
+  List<String> _subjects = [];
   @override
   void initState() {
     super.initState();
-    _loadDeviceAndUserData();
+    _loadInitialData();
+  }
+  // UPDATED: Combined initial loading
+  Future<void> _loadInitialData() async {
+    await _loadDeviceAndUserData();
+    await _loadContentFiles();
+    await _loadSubjects(); // Load saved subjects
   }
 
-  @override
-  void dispose() {
-    Nearby().stopAdvertising();
-    Nearby().stopAllEndpoints();
-    super.dispose();
+  // NEW: Function to load subjects from SharedPreferences
+  Future<void> _loadSubjects() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _subjects = prefs.getStringList('teacher_subjects') ?? [];
+    });
   }
+
+  // NEW: Function to save subjects to SharedPreferences
+  Future<void> _saveSubjects() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('teacher_subjects', _subjects);
+  }
+
 
   Future<void> _loadDeviceAndUserData() async {
     final prefs = await SharedPreferences.getInstance();
-    final deviceInfo = DeviceInfoPlugin();
-    final androidInfo = await deviceInfo.androidInfo;
     setState(() {
       _teacherName = prefs.getString('teacher_userName') ?? 'Teacher';
-      _deviceId = androidInfo.id;
       _isDataLoaded = true;
+    });
+  }
+
+  Future<void> _loadContentFiles() async {
+    final directory = await getApplicationDocumentsDirectory();
+    final quizzesDir = Directory('${directory.path}/quizzes');
+    final notesDir = Directory('${directory.path}/notes');
+    List<File> allFiles = [];
+    if (await quizzesDir.exists()) {
+      allFiles.addAll(quizzesDir.listSync().whereType<File>());
+    }
+    if (await notesDir.exists()) {
+      allFiles.addAll(notesDir.listSync().whereType<File>());
+    }
+    setState(() {
+      _contentFiles = allFiles;
     });
   }
 
@@ -62,6 +94,7 @@ class _SharingSessionPageState extends State<SharingSessionPage> {
       Permission.bluetoothConnect,
       Permission.nearbyWifiDevices,
     ].request();
+
     bool allGranted = statuses.values.every((status) => status.isGranted);
     if (!allGranted) {
       if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('All permissions must be granted to proceed.')));
@@ -81,11 +114,7 @@ class _SharingSessionPageState extends State<SharingSessionPage> {
       if (await _checkAndRequestPermissions()) {
         try {
           setState(() => _isSharing = true);
-
-          // ADDED: A print statement to verify the name before advertising
-          print("--- Broadcasting with name: $_teacherName ---");
-
-          bool started = await Nearby().startAdvertising(
+          await Nearby().startAdvertising(
             _teacherName,
             Strategy.P2P_STAR,
             onConnectionInitiated: _onConnectionInitiated,
@@ -99,11 +128,7 @@ class _SharingSessionPageState extends State<SharingSessionPage> {
             },
             serviceId: _serviceId,
           );
-          if(!started) {
-            setState(() => _isSharing = false);
-          }
         } catch (e) {
-          print("Error starting advertising: $e");
           setState(() => _isSharing = false);
         }
       }
@@ -120,6 +145,175 @@ class _SharingSessionPageState extends State<SharingSessionPage> {
     });
   }
 
+  // UPDATED: Now sends subject information in the metadata
+  // UPDATED: This function now uses the best method for each file type
+  Future<void> _sendFileToAllStudents(File file, String subject) async {
+    if (_connectedStudents.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No students connected.')));
+      return;
+    }
+
+    String fileName = file.path.split('/').last;
+    bool isQuiz = fileName.endsWith('.json');
+
+    Map<String, dynamic> metadata = {
+      'type': 'metadata',
+      'filename': fileName,
+      'subject': subject,
+    };
+    Uint8List metadataBytes = Uint8List.fromList(jsonEncode(metadata).codeUnits);
+
+    for(String studentId in _connectedStudents.keys) {
+      try {
+        // 1. Send metadata for all file types
+        await Nearby().sendBytesPayload(studentId, metadataBytes);
+
+        // 2. Send the file itself
+        if (isQuiz) {
+          // Send small quiz files as bytes
+          Uint8List fileBytes = await file.readAsBytes();
+          await Nearby().sendBytesPayload(studentId, fileBytes);
+        } else {
+          // Send large note files (PDF, video) as a file stream
+          await Nearby().sendFilePayload(studentId, file.path);
+        }
+
+      } catch (e) {
+        print("Error sending to $studentId: $e");
+      }
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Sent $fileName to all students')),
+      );
+    }
+  }
+
+  // UPDATED: Now handles asking for a subject if the file is not a quiz
+  void _showFileSelectionDialog() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Select a file to send'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: _contentFiles.length,
+              itemBuilder: (context, index) {
+                final file = _contentFiles[index];
+                final fileName = file.path.split('/').last;
+                return ListTile(
+                  title: Text(fileName),
+                  onTap: () async {
+                    Navigator.pop(context); // Close the selection dialog
+
+                    if (fileName.endsWith('.json')) {
+                      // It's a quiz, we can read the subject from the file
+                      final jsonString = await file.readAsString();
+                      final jsonMap = jsonDecode(jsonString);
+                      final quiz = Quiz.fromJson(jsonMap);
+                      _sendFileToAllStudents(file, quiz.subject);
+                    } else {
+                      // It's a note, we need to ask for the subject
+                      _askForSubject(file);
+                    }
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [ TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')) ],
+        );
+      },
+    );
+  }
+  // NEW: A dialog to ask the teacher for a note's subject before sending
+  Future<void> _askForSubject(File file) async {
+    String? selectedSubject;
+    final newSubjectController = TextEditingController();
+    const addNewKey = '---ADD_NEW---';
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        // Use a StatefulBuilder to manage the dialog's own state
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Text('Select Subject for "${file.path.split('/').last}"'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    // List existing subjects
+                    ..._subjects.map((subject) => RadioListTile<String>(
+                      title: Text(subject),
+                      value: subject,
+                      groupValue: selectedSubject,
+                      onChanged: (value) => setDialogState(() => selectedSubject = value),
+                    )),
+                    // Option to add a new one
+                    RadioListTile<String>(
+                      title: const Text('Add new subject...'),
+                      value: addNewKey,
+                      groupValue: selectedSubject,
+                      onChanged: (value) => setDialogState(() => selectedSubject = value),
+                    ),
+                    // Show TextField only if "Add new" is selected
+                    if (selectedSubject == addNewKey)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                        child: TextField(
+                          controller: newSubjectController,
+                          autofocus: true,
+                          decoration: const InputDecoration(hintText: "Enter new subject name"),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+                ElevatedButton(
+                  onPressed: () {
+                    String? finalSubject;
+                    if (selectedSubject == addNewKey) {
+                      if (newSubjectController.text.isNotEmpty) {
+                        finalSubject = newSubjectController.text;
+                        // Add the new subject to our main list if it's not already there
+                        if (!_subjects.contains(finalSubject)) {
+                          setState(() {
+                            _subjects.add(finalSubject!);
+                          });
+                          _saveSubjects(); // Save the updated list
+                        }
+                      }
+                    } else {
+                      finalSubject = selectedSubject;
+                    }
+
+                    if (finalSubject != null) {
+                      Navigator.pop(context); // Close the dialog
+                      _sendFileToAllStudents(file, finalSubject);
+                    } else {
+                      // Optionally show a small error if nothing is selected/entered
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Please select or add a subject.')),
+                      );
+                    }
+                  },
+                  child: const Text('Send'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -129,12 +323,22 @@ class _SharingSessionPageState extends State<SharingSessionPage> {
         backgroundColor: Colors.white,
         foregroundColor: Colors.grey.shade800,
         elevation: 1,
+        actions: [
+          // NEW: Send File button in AppBar
+          if (_isSharing && _connectedStudents.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.send_rounded),
+              onPressed: _showFileSelectionDialog,
+              tooltip: 'Send File to Students',
+            )
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ... (Your status card can go here if you want)
             Text('Connected Students (${_connectedStudents.length})', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
             Expanded(
@@ -146,7 +350,8 @@ class _SharingSessionPageState extends State<SharingSessionPage> {
                     : ListView.builder(
                   itemCount: _connectedStudents.length,
                   itemBuilder: (context, index) {
-                    final studentName = _connectedStudents.values.elementAt(index);
+                    final studentId = _connectedStudents.keys.elementAt(index);
+                    final studentName = _connectedStudents[studentId]!;
                     return ListTile(
                       leading: CircleAvatar(
                         backgroundColor: Colors.indigo.shade100,
@@ -166,15 +371,11 @@ class _SharingSessionPageState extends State<SharingSessionPage> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _isDataLoaded ? _toggleSharing : null,
         backgroundColor: _isDataLoaded
-            ? (_isSharing ? Colors.red.shade700 : Colors.indigo)
+            ? (_isSharing ? Colors.red.shade700 : Colors.orange)
             : Colors.grey,
         icon: _isDataLoaded
             ? Icon(_isSharing ? Icons.stop_rounded : Icons.wifi_tethering_rounded)
-            : const SizedBox(
-          width: 24,
-          height: 24,
-          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
-        ),
+            : const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3)),
         label: Text(
           _isDataLoaded
               ? (_isSharing ? 'Stop Sharing' : 'Start Sharing Session')
