@@ -1,15 +1,17 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as path; // Import the path package
+import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
-import 'package:file_picker/file_picker.dart'; // Add this import
+import 'package:file_picker/file_picker.dart';
+import 'package:open_file/open_file.dart';
 import 'package:peer_to_peer_learning_network/models/quiz_models.dart';
 import 'package:peer_to_peer_learning_network/screens/teacher/quiz_details_page.dart';
 import 'package:peer_to_peer_learning_network/screens/teacher/create_quiz_page.dart';
 
 class ContentManagementPage extends StatefulWidget {
-  const ContentManagementPage({super.key});
+  final bool isSelectionMode;
+  const ContentManagementPage({super.key, this.isSelectionMode = false});
 
   @override
   State<ContentManagementPage> createState() => _ContentManagementPageState();
@@ -19,6 +21,7 @@ class _ContentManagementPageState extends State<ContentManagementPage> {
   bool _isLoading = true;
   List<File> _quizFiles = [];
   List<File> _noteFiles = [];
+  final List<File> _selectedFiles = [];
 
   @override
   void initState() {
@@ -41,12 +44,9 @@ class _ContentManagementPageState extends State<ContentManagementPage> {
       final directory = await getApplicationDocumentsDirectory();
       final quizzesDir = Directory('${directory.path}/quizzes');
       if (await quizzesDir.exists()) {
-        final files = quizzesDir.listSync();
+        final files = quizzesDir.listSync(recursive: true).whereType<File>().toList();
         setState(() {
-          _quizFiles = files
-              .whereType<File>()
-              .where((file) => file.path.endsWith('.json'))
-              .toList();
+          _quizFiles = files;
         });
       }
     } catch (e) {
@@ -59,9 +59,9 @@ class _ContentManagementPageState extends State<ContentManagementPage> {
       final directory = await getApplicationDocumentsDirectory();
       final notesDir = Directory('${directory.path}/notes');
       if (await notesDir.exists()) {
-        final files = notesDir.listSync();
+        final files = notesDir.listSync(recursive: true).whereType<File>().toList();
         setState(() {
-          _noteFiles = files.whereType<File>().toList();
+          _noteFiles = files;
         });
       }
     } catch (e) {
@@ -86,24 +86,19 @@ class _ContentManagementPageState extends State<ContentManagementPage> {
     }
   }
 
-  // ADDED: Logic for picking and saving a note file
   Future<void> _uploadNote() async {
     try {
-      // 1. Pick a file
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['pdf', 'mp4', 'txt','jpg', 'jpeg', 'png'],
+        allowedExtensions: ['pdf', 'mp4', 'txt', 'jpg', 'jpeg', 'png'],
       );
 
       if (result == null || result.files.single.path == null) {
-        // User canceled the picker
         return;
       }
 
-      // 2. Get the file path and create a destination path
       final sourceFile = File(result.files.single.path!);
-      final fileName = path.basename(sourceFile.path); // Get the original filename
-
+      final fileName = path.basename(sourceFile.path);
       final directory = await getApplicationDocumentsDirectory();
       final notesDir = Directory('${directory.path}/notes');
       if (!await notesDir.exists()) {
@@ -111,10 +106,8 @@ class _ContentManagementPageState extends State<ContentManagementPage> {
       }
       final destinationPath = '${notesDir.path}/$fileName';
 
-      // 3. Copy the file to the app's directory
       await sourceFile.copy(destinationPath);
 
-      // 4. Refresh the list of notes and show a success message
       await _loadSavedNotes();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -155,7 +148,6 @@ class _ContentManagementPageState extends State<ContentManagementPage> {
             SimpleDialogOption(
               onPressed: () {
                 Navigator.pop(context);
-                // CHANGED: Call the new upload function
                 _uploadNote();
               },
               child: const ListTile(
@@ -169,34 +161,58 @@ class _ContentManagementPageState extends State<ContentManagementPage> {
     );
   }
 
-  String _formatFileName(String path) {
-    return path.split('/').last.replaceAll('-', ' ').replaceAll('.json', '');
+  Future<void> _onFileTap(File file) async {
+    if (widget.isSelectionMode) {
+      setState(() {
+        if (_selectedFiles.contains(file)) {
+          _selectedFiles.remove(file);
+        } else {
+          _selectedFiles.add(file);
+        }
+      });
+    } else {
+      if (file.path.endsWith('.json')) {
+        _navigateToQuizDetails(file);
+      } else {
+        await OpenFile.open(file.path);
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // ... UI Code remains the same ...
     return DefaultTabController(
       length: 2,
       child: Scaffold(
         backgroundColor: Colors.indigo.shade50,
         appBar: AppBar(
-          title: const Text('My Content'),
+          title: Text(widget.isSelectionMode ? 'Select Content' : 'My Content'),
           backgroundColor: Colors.white,
           foregroundColor: Colors.grey.shade800,
           elevation: 1,
           bottom: const TabBar(
-            indicatorColor: Colors.orange,
-            labelColor: Colors.orange,
+            indicatorColor: Colors.indigo,
+            labelColor: Colors.indigo,
             tabs: [
               Tab(text: 'Quizzes'),
               Tab(text: 'Notes'),
             ],
           ),
+          actions: [
+            if (widget.isSelectionMode)
+              IconButton(
+                icon: const Icon(Icons.check_rounded),
+                onPressed: () {
+                  Navigator.pop(context, _selectedFiles);
+                },
+              ),
+          ],
         ),
-        floatingActionButton: FloatingActionButton(
+        floatingActionButton: widget.isSelectionMode
+            ? null
+            : FloatingActionButton(
           onPressed: _showAddContentDialog,
-          backgroundColor: Colors.deepOrange,
+          backgroundColor: Colors.indigo,
           child: const Icon(Icons.add),
         ),
         body: _isLoading
@@ -238,9 +254,9 @@ class _ContentManagementPageState extends State<ContentManagementPage> {
       itemCount: _quizFiles.length,
       itemBuilder: (context, index) {
         final file = _quizFiles[index];
-        final quizTitle = _formatFileName(file.path);
-
+        final isSelected = _selectedFiles.contains(file);
         return Card(
+          color: isSelected ? Colors.indigo.shade100 : Colors.white,
           elevation: 2,
           margin: const EdgeInsets.only(bottom: 12.0),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -251,14 +267,17 @@ class _ContentManagementPageState extends State<ContentManagementPage> {
               child: Icon(Icons.quiz_rounded, color: Colors.white),
             ),
             title: Text(
-              quizTitle.isNotEmpty ? '${quizTitle[0].toUpperCase()}${quizTitle.substring(1)}' : '',
+              file.path.split('/').last.replaceAll('-', ' ').replaceAll('.json', ''),
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
-            subtitle: const Text('Quiz File'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-            onTap: () {
-              _navigateToQuizDetails(file);
-            },
+            subtitle: Text(file.parent.path.split('/').last),
+            trailing: widget.isSelectionMode
+                ? Icon(
+              isSelected ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+              color: Colors.indigo,
+            )
+                : const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+            onTap: () => _onFileTap(file),
           ),
         );
       },
@@ -271,28 +290,27 @@ class _ContentManagementPageState extends State<ContentManagementPage> {
       itemCount: _noteFiles.length,
       itemBuilder: (context, index) {
         final file = _noteFiles[index];
-        final noteTitle = path.basename(file.path); // Use path.basename for a clean name
+        final noteTitle = path.basename(file.path);
+        final isSelected = _selectedFiles.contains(file);
 
-        // Helper to get an appropriate icon and color based on file type
         IconData getIconForFile(String fileName) {
-          if (fileName.endsWith('.pdf')) return Icons.picture_as_pdf_rounded;
-          if (fileName.endsWith('.mp4')) return Icons.video_library_rounded;
-          if (fileName.toLowerCase().endsWith('.jpg') || fileName.toLowerCase().endsWith('.jpeg') || fileName.toLowerCase().endsWith('.png')) {
-            return Icons.image_rounded;
-          }
+          final ext = fileName.toLowerCase();
+          if (ext.endsWith('.pdf')) return Icons.picture_as_pdf_rounded;
+          if (ext.endsWith('.mp4')) return Icons.video_library_rounded;
+          if (ext.endsWith('.jpg') || ext.endsWith('.jpeg') || ext.endsWith('.png')) return Icons.image_rounded;
           return Icons.note_alt_rounded;
         }
 
         Color getColorForFile(String fileName) {
-          if (fileName.endsWith('.pdf')) return Colors.red;
-          if (fileName.endsWith('.mp4')) return Colors.orange;
-          if (fileName.toLowerCase().endsWith('.jpg') || fileName.toLowerCase().endsWith('.jpeg') || fileName.toLowerCase().endsWith('.png')) {
-            return Colors.purple;
-          }
+          final ext = fileName.toLowerCase();
+          if (ext.endsWith('.pdf')) return Colors.red;
+          if (ext.endsWith('.mp4')) return Colors.orange;
+          if (ext.endsWith('.jpg') || ext.endsWith('.jpeg') || ext.endsWith('.png')) return Colors.purple;
           return Colors.blue;
         }
 
         return Card(
+          color: isSelected ? Colors.indigo.shade100 : Colors.white,
           elevation: 2,
           margin: const EdgeInsets.only(bottom: 12.0),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -307,13 +325,13 @@ class _ContentManagementPageState extends State<ContentManagementPage> {
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             subtitle: Text('${(file.lengthSync() / 1024).toStringAsFixed(2)} KB'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-            onTap: () {
-              // Placeholder for viewing a note
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Note viewing feature coming soon!')),
-              );
-            },
+            trailing: widget.isSelectionMode
+                ? Icon(
+              isSelected ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+              color: Colors.indigo,
+            )
+                : const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+            onTap: () => _onFileTap(file),
           ),
         );
       },

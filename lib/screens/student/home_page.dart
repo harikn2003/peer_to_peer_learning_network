@@ -4,7 +4,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:peer_to_peer_learning_network/screens/student/quiz_page.dart';
 import 'package:peer_to_peer_learning_network/screens/student/receiving_session_page.dart';
-import 'package:peer_to_peer_learning_network/screens/student/pdf_viewer_page.dart';
+import 'package:open_file/open_file.dart';
 
 class StudentHomePage extends StatefulWidget {
   const StudentHomePage({super.key});
@@ -73,26 +73,18 @@ class _StudentHomePageState extends State<StudentHomePage> {
     });
   }
 
-  void _onFileTapped(BuildContext context, File file) {
+  Future<void> _onFileTapped(BuildContext context, File file) async {
     final fileName = file.path.split('/').last;
     final isQuiz = fileName.toLowerCase().endsWith('.json');
-    final isPdf = fileName.toLowerCase().endsWith('.pdf');
 
     if (isQuiz) {
       Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => const QuizPage()),
       );
-    } else if (isPdf) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => PdfViewerPage(file: file)),
-      );
     } else {
-      // Placeholder for other file types like videos
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Opening $fileName...')),
-      );
+      // Use open_file for all other file types
+      await OpenFile.open(file.path);
     }
   }
 
@@ -298,15 +290,19 @@ class _StudentHomePageState extends State<StudentHomePage> {
     final fileName = file.path.split('/').last.replaceAll('.json', '').replaceAll('-', ' ');
     final subject = file.parent.path.split('/').last;
 
-    // Helper to get icon/color based on file extension for notes
     IconData getNoteIcon(File noteFile) {
-      if (noteFile.path.toLowerCase().endsWith('.pdf')) return Icons.picture_as_pdf_rounded;
-      if (noteFile.path.toLowerCase().endsWith('.mp4')) return Icons.video_library_rounded;
+      final path = noteFile.path.toLowerCase();
+      if (path.endsWith('.pdf')) return Icons.picture_as_pdf_rounded;
+      if (path.endsWith('.mp4')) return Icons.video_library_rounded;
+      if (path.endsWith('.jpg') || path.endsWith('.jpeg') || path.endsWith('.png')) return Icons.image_rounded;
       return Icons.note_alt_rounded;
     }
+
     Color getNoteColor(File noteFile) {
-      if (noteFile.path.toLowerCase().endsWith('.pdf')) return Colors.red;
-      if (noteFile.path.toLowerCase().endsWith('.mp4')) return Colors.orange;
+      final path = noteFile.path.toLowerCase();
+      if (path.endsWith('.pdf')) return Colors.red;
+      if (path.endsWith('.mp4')) return Colors.orange;
+      if (path.endsWith('.jpg') || path.endsWith('.jpeg') || path.endsWith('.png')) return Colors.purple;
       return Colors.blue;
     }
 
@@ -321,7 +317,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
       subtitle: isQuiz ? Text(subject) : null,
       trailing:
       const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-      onTap: () => _onFileTapped(context, file), // UPDATED
+      onTap: () => _onFileTapped(context, file), // UPDATED to call the new async function
     );
   }
 }
