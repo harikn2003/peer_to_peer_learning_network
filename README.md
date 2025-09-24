@@ -7,7 +7,6 @@ Objectives:-
 
 - Enable offline content sharing via Bluetooth/Wi-Fi Direct.
 - Allow teachers to preload quizzes that students can take offline.
-- Provide a cross-platform app (Android and Web).
 - Ensure low-resource usage, ideal for rural schools.
 
 Content Sharing Flow
