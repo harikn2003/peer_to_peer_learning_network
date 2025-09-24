@@ -1,7 +1,7 @@
 # Offline Peer-to-Peer Learning Network for Rural Schools
 Abstract:-
 In rural or low-connectivity regions, students often lack consistent internet access for learning resources. This project aims to develop a hybrid Flutter-based solution that allows teachers to share study materials and quizzes offline with students using Wi-Fi Direct or Nearby Connections.
-The system includes a web portal (for teachers to upload content), a mobile app for students to receive and view shared content, and a quiz mode for assessments—all done without the internet, making learning more accessible in remote settings.
+The system includes a Mobile app (for teachers to upload content), a mobile app for students to receive and view shared content, and a quiz mode for assessments—all done without the internet, making learning more accessible in remote settings.
 
 Objectives:-
 
