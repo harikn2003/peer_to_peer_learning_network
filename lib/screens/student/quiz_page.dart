@@ -1,52 +1,114 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:peer_to_peer_learning_network/models/quiz_models.dart';
+import 'package:peer_to_peer_learning_network/screens/student/quiz_results_page.dart'; // We will create this next
 
 class QuizPage extends StatefulWidget {
-  const QuizPage({super.key});
+  final File quizFile;
+  final String teacherEndpointId;
+  const QuizPage({super.key, required this.quizFile,required this.teacherEndpointId});
 
   @override
-  _QuizPageState createState() => _QuizPageState();
+  State<QuizPage> createState() => _QuizPageState();
 }
 
 class _QuizPageState extends State<QuizPage> {
-  int _seconds = 300;
+  Quiz? _quiz;
+  bool _isLoading = true;
+  int _currentQuestionIndex = 0;
   Timer? _timer;
-  String? _selectedOption;
-  final int _currentQuestion = 1;
-  final int _totalQuestions = 10;
+  int _secondsRemaining = 0;
+
+  // Map to store student's answers <questionIndex, selectedOptionIndex>
+  final Map<int, int> _studentAnswers = {};
+  final PageController _pageController = PageController();
 
   @override
   void initState() {
     super.initState();
-    _startTimer();
-  }
-
-  void _startTimer() {
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_seconds > 0) {
-        setState(() => _seconds--);
-      } else {
-        _timer?.cancel();
-      }
-    });
+    _loadQuiz();
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _pageController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadQuiz() async {
+    try {
+      final jsonString = await widget.quizFile.readAsString();
+      final jsonMap = jsonDecode(jsonString);
+      final quizData = Quiz.fromJson(jsonMap);
+      setState(() {
+        _quiz = quizData;
+        _secondsRemaining = quizData.timeLimitMinutes * 60;
+        _isLoading = false;
+      });
+      _startTimer();
+    } catch (e) {
+      print('Error loading quiz: $e');
+      // Handle error, maybe pop back
+    }
+  }
+
+  void _startTimer() {
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_secondsRemaining > 0) {
+        setState(() {
+          _secondsRemaining--;
+        });
+      } else {
+        _timer?.cancel();
+        _submitQuiz(); // Auto-submit when time runs out
+      }
+    });
+  }
+
+  void _submitQuiz() {
+    _timer?.cancel();
+    int score = 0;
+    if (_quiz == null) return;
+
+    for (int i = 0; i < _quiz!.questions.length; i++) {
+      if (_studentAnswers.containsKey(i) &&
+          _studentAnswers[i] == _quiz!.questions[i].correctAnswerIndex) {
+        score++;
+      }
+    }
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => QuizResultsPage(
+          score: score,
+          totalQuestions: _quiz!.questions.length,
+          quizTitle: _quiz!.title,
+          teacherEndpointId: widget.teacherEndpointId,
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    int minutes = _seconds ~/ 60;
-    int seconds = _seconds % 60;
-    final List<String> options = ["Evaporation", "Condensation", "Precipitation", "Infiltration"];
+    if (_isLoading || _quiz == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Loading Quiz...')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    int minutes = _secondsRemaining ~/ 60;
+    int seconds = _secondsRemaining % 60;
 
     return Scaffold(
-      backgroundColor: Colors.amber.shade50, // Changed background color
+      backgroundColor: Colors.amber.shade50,
       appBar: AppBar(
-        title: const Text('Science Quiz'),
+        title: Text(_quiz!.title),
         backgroundColor: Colors.white,
         foregroundColor: Colors.grey.shade800,
         elevation: 1,
@@ -71,49 +133,62 @@ class _QuizPageState extends State<QuizPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Question $_currentQuestion of $_totalQuestions',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 16, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 4),
-                LinearProgressIndicator(
-                  value: _currentQuestion / _totalQuestions,
-                  backgroundColor: Colors.amber.shade100,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.amber.shade700),
-                  minHeight: 6,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ],
-            ),
-            const SizedBox(height: 30),
             Text(
-              'Which process causes water vapor to form clouds?',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.grey.shade800),
+              'Question ${_currentQuestionIndex + 1} of ${_quiz!.questions.length}',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 16, fontWeight: FontWeight.w600),
             ),
-            const SizedBox(height: 30),
-            ...options.map((option) => _buildOption(option)),
-            const Spacer(),
-            ElevatedButton(
-              onPressed: () {},
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.amber.shade700,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 50),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            const SizedBox(height: 4),
+            LinearProgressIndicator(
+              value: (_currentQuestionIndex + 1) / _quiz!.questions.length,
+              backgroundColor: Colors.amber.shade100,
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.amber.shade700),
+              minHeight: 6,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            const SizedBox(height: 20),
+            Expanded(
+              child: PageView.builder(
+                controller: _pageController,
+                physics: const NeverScrollableScrollPhysics(), // Disable swiping
+                itemCount: _quiz!.questions.length,
+                itemBuilder: (context, index) {
+                  final question = _quiz!.questions[index];
+                  return _buildQuestionView(question, index);
+                },
+                onPageChanged: (index) {
+                  setState(() {
+                    _currentQuestionIndex = index;
+                  });
+                },
               ),
-              child: const Text('Next Question', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             ),
+            _buildNavigationButtons(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildOption(String text) {
-    bool isSelected = _selectedOption == text;
+  Widget _buildQuestionView(Question question, int index) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          question.questionText,
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.grey.shade800),
+        ),
+        const SizedBox(height: 30),
+        ...question.options.asMap().entries.map((entry) {
+          int optionIndex = entry.key;
+          String optionText = entry.value;
+          return _buildOption(optionText, optionIndex, index);
+        }),
+      ],
+    );
+  }
+
+  Widget _buildOption(String text, int optionIndex, int questionIndex) {
+    bool isSelected = _studentAnswers[questionIndex] == optionIndex;
     return Card(
       elevation: isSelected ? 4 : 1,
       shape: RoundedRectangleBorder(
@@ -124,36 +199,59 @@ class _QuizPageState extends State<QuizPage> {
         ),
       ),
       margin: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
-        onTap: () {
+      child: RadioListTile<int>(
+        value: optionIndex,
+        groupValue: _studentAnswers[questionIndex],
+        onChanged: (value) {
           setState(() {
-            _selectedOption = text;
+            _studentAnswers[questionIndex] = value!;
           });
         },
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Row(
-            children: [
-              Icon(
-                isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                color: isSelected ? Colors.amber.shade700 : Colors.grey.shade400,
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Text(
-                  text,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                    color: isSelected ? Colors.amber.shade800 : Colors.grey.shade700,
-                  ),
-                ),
-              ),
-            ],
-          ),
+        title: Text(
+          text,
+          style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal),
         ),
+        activeColor: Colors.amber.shade700,
       ),
+    );
+  }
+
+  Widget _buildNavigationButtons() {
+    bool isLastQuestion = _currentQuestionIndex == _quiz!.questions.length - 1;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        if (_currentQuestionIndex > 0)
+          TextButton(
+            onPressed: () {
+              _pageController.previousPage(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeIn,
+              );
+            },
+            child: const Text('<< Previous'),
+          ),
+        const Spacer(),
+        ElevatedButton(
+          onPressed: () {
+            if (isLastQuestion) {
+              _submitQuiz();
+            } else {
+              _pageController.nextPage(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeIn,
+              );
+            }
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: isLastQuestion ? Colors.green : Colors.amber.shade700,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          ),
+          child: Text(isLastQuestion ? 'Submit Quiz' : 'Next >>', style: const TextStyle(fontSize: 16)),
+        ),
+      ],
     );
   }
 }

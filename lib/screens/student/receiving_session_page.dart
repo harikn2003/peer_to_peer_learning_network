@@ -8,6 +8,8 @@ import 'package:nearby_connections/nearby_connections.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:peer_to_peer_learning_network/screens/student/quiz_page.dart';
+
 
 class ReceivingSessionPage extends StatefulWidget {
   const ReceivingSessionPage({super.key});
@@ -213,7 +215,19 @@ class _ReceivingSessionPageState extends State<ReceivingSessionPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Received $_receivingFileName successfully!')),
         );
-      }
+        if (_receivingFileName!.toLowerCase().endsWith('.json') && _connectedTeacherId != null) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) =>
+                  QuizPage(
+                    quizFile: file,
+                    teacherEndpointId: _connectedTeacherId!,
+                  ),
+            ),
+          );
+        }
+    }
       setState(() { _receivingFileName = null; _receivingSubject = null; });
     }
   }

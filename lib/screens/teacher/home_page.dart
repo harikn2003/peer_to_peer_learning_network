@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:peer_to_peer_learning_network/screens/teacher/create_quiz_page.dart';
 import 'package:peer_to_peer_learning_network/screens/teacher/content_management_page.dart';
 import 'package:peer_to_peer_learning_network/screens/teacher/sharing_session_page.dart';
+import 'package:peer_to_peer_learning_network/screens/teacher/reports_page.dart';
 
 class TeacherHomePage extends StatefulWidget {
   const TeacherHomePage({super.key});
@@ -200,7 +201,12 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           title: 'View Reports',
           icon: Icons.assessment_outlined,
           color: Colors.red.shade600,
-          onTap: () {},
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const ReportsPage()),
+            );
+          },
         ),
       ],
     );

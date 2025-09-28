@@ -44,6 +44,7 @@ dependencies:
   location: ^8.0.1
   device_info_plus: ^12.1.0
   open_file: ^3.5.10
+  collection: ^1.19.1
 #  flutter_pdfview: ^1.4.1+1
 #  video_player: ^2.10.0
 #  open_file_plus: ^3.4.1+1

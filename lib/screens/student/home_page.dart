@@ -80,10 +80,10 @@ class _StudentHomePageState extends State<StudentHomePage> {
     if (isQuiz) {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => const QuizPage()),
+        MaterialPageRoute(builder: (context) => QuizPage(quizFile: file, teacherEndpointId: 'teacherEndpointId')),
       );
     } else {
-      // Use open_file for all other file types
+      // Logic for opening notes remains the same
       await OpenFile.open(file.path);
     }
   }

@@ -135,16 +135,64 @@ class _SharingSessionPageState extends State<SharingSessionPage> {
     }
   }
 
+  Future<void> _saveResult(Map<String, dynamic> resultData) async {
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final file = File('${directory.path}/quiz_results.json');
+
+      List<dynamic> allResults = [];
+      if (await file.exists()) {
+        final content = await file.readAsString();
+        if (content.isNotEmpty) {
+          allResults = jsonDecode(content);
+        }
+      }
+
+      allResults.add(resultData);
+      await file.writeAsString(jsonEncode(allResults));
+      print("Result saved successfully.");
+
+    } catch (e) {
+      print("Error saving result: $e");
+    }
+  }
+
   void _onConnectionInitiated(String id, ConnectionInfo info) {
     Nearby().acceptConnection(
       id,
-      onPayLoadRecieved: (endpointId, payload) {},
+      onPayLoadRecieved: (endpointId, payload) {
+        if (payload.type == PayloadType.BYTES) {
+          final str = String.fromCharCodes(payload.bytes!);
+          try {
+            final data = jsonDecode(str);
+            if (data['type'] == 'quiz_result') {
+              // A student sent their results!
+              final studentName = data['studentName'];
+              final score = data['score'];
+              final total = data['total'];
+
+              // 1. Save the result
+              _saveResult(data);
+
+              // 2. Show an immediate notification
+              // 2. Show a SnackBar notification
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Result from $studentName: $score/$total on "${data['quizTitle']}"'),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+          } catch (e) {
+            print("Received unknown byte payload: $e");
+          }
+        }
+      },
     );
     setState(() {
       _connectedStudents[id] = info.endpointName;
     });
   }
-
   // UPDATED: Now sends subject information in the metadata
   // UPDATED: This function now uses the best method for each file type
   Future<void> _sendFileToAllStudents(File file, String subject) async {
