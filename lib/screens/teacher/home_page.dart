@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:peer_to_peer_learning_network/screens/teacher/create_quiz_page.dart';
 import 'package:peer_to_peer_learning_network/screens/teacher/content_management_page.dart';
@@ -14,102 +16,97 @@ class TeacherHomePage extends StatefulWidget {
 
 class _TeacherHomePageState extends State<TeacherHomePage> {
   String _teacherName = 'Teacher';
+  int _quizCount = 0; // State variable to hold the quiz count
 
   @override
   void initState() {
     super.initState();
-    _loadTeacherName();
+    _loadInitialData();
   }
 
-  Future<void> _loadTeacherName() async {
+  // Loads both the teacher's name and the stats
+  Future<void> _loadInitialData() async {
     final prefs = await SharedPreferences.getInstance();
+    final directory = await getApplicationDocumentsDirectory();
+    final quizzesDir = Directory('${directory.path}/quizzes');
+
+    int count = 0;
+    if (await quizzesDir.exists()) {
+      // Count all .json files in all subject sub-folders
+      count = quizzesDir.listSync(recursive: true).whereType<File>().length;
+    }
+
     setState(() {
       _teacherName = prefs.getString('teacher_userName') ?? 'Teacher';
+      _quizCount = count;
     });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey.shade100,
+      backgroundColor: Colors.indigo.shade50,
       appBar: AppBar(
-        title: const Text(
-          'Teacher Dashboard',
-          style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF333333)),
-        ),
+        title: const Text('Teacher Dashboard'),
         backgroundColor: Colors.white,
         foregroundColor: Colors.grey.shade800,
         elevation: 1,
-        actions: [
-          IconButton(
-            icon: Icon(Icons.settings_outlined, color: Colors.grey.shade700),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Settings tapped!')),
-              );
-            },
-          ),
-        ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16.0),
-        children: [
-          _buildWelcomeHeader(),
-          const SizedBox(height: 24),
-          _buildQuickStats(),
-          const SizedBox(height: 24),
-          Text(
-            'Your Actions',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey.shade700,
-            ),
-          ),
-          const SizedBox(height: 12),
-          _buildActionsGrid(),
-        ],
+      body: RefreshIndicator(
+        onRefresh: _loadInitialData, // Allows pull-to-refresh
+        child: ListView(
+          padding: const EdgeInsets.all(16.0),
+          children: [
+            _buildWelcomeHeader(),
+            const SizedBox(height: 24),
+            _buildQuickStats(),
+            const SizedBox(height: 24),
+            _buildActionsGrid(),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildWelcomeHeader() {
-    return Container(
-      padding: const EdgeInsets.all(20.0),
-      decoration: BoxDecoration(
-        color: Colors.indigo.shade50,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Welcome back, $_teacherName!',
-            style: TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.bold,
-              color: Colors.indigo.shade800,
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Welcome back, $_teacherName',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: Colors.grey.shade800,
           ),
-          const SizedBox(height: 6),
-          Text(
-            'What would you like to achieve today?',
-            style: TextStyle(fontSize: 17, color: Colors.indigo.shade700),
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'What would you like to do today?',
+          style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+        ),
+      ],
     );
   }
 
+  // UPDATED: This widget is now functional
   Widget _buildQuickStats() {
     return Row(
       children: [
         Expanded(
-          child: _buildStatCard('Active Sessions', '3', Icons.wifi_tethering_rounded, Colors.orange),
+          child: InkWell(
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SharingSessionPage())),
+            borderRadius: BorderRadius.circular(12),
+            child: _buildStatCard('Start Session', 'Go', Icons.wifi_tethering_rounded, Colors.orange),
+          ),
         ),
         const SizedBox(width: 16),
         Expanded(
-          child: _buildStatCard('Pending Quizzes', '2', Icons.quiz_outlined, Colors.lightBlue),
+          child: InkWell(
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ContentManagementPage())),
+            borderRadius: BorderRadius.circular(12),
+            child: _buildStatCard('Saved Quizzes', _quizCount.toString(), Icons.quiz_outlined, Colors.lightBlue),
+          ),
         ),
       ],
     );
@@ -165,17 +162,6 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
       crossAxisSpacing: 16,
       children: [
         _buildActionCard(
-          title: 'Start Sharing',
-          icon: Icons.wifi_tethering_rounded,
-          color: Colors.indigo,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const SharingSessionPage()),
-              );
-            },
-        ),
-        _buildActionCard(
           title: 'Create Quiz',
           icon: Icons.edit_note_rounded,
           color: Colors.amber.shade700,
@@ -183,7 +169,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
             Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => const CreateQuizPage()),
-            );
+            ).then((_) => _loadInitialData()); // Refresh stats when returning
           },
         ),
         _buildActionCard(
@@ -194,17 +180,28 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
             Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => const ContentManagementPage()),
-            );
+            ).then((_) => _loadInitialData()); // Refresh stats when returning
           },
         ),
         _buildActionCard(
           title: 'View Reports',
-          icon: Icons.assessment_outlined,
-          color: Colors.red.shade600,
+          icon: Icons.bar_chart_rounded,
+          color: Colors.red,
           onTap: () {
             Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => const ReportsPage()),
+            );
+          },
+        ),
+        _buildActionCard(
+          title: 'Start Sharing',
+          icon: Icons.wifi_tethering_rounded,
+          color: Colors.indigo,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const SharingSessionPage()),
             );
           },
         ),
