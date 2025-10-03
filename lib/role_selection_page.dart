@@ -60,7 +60,7 @@ class RoleSelectionPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 24),
                   const Text(
-                    'Welcome to Learning Hub!',
+                    'Welcome to PeerLearn!',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 32,

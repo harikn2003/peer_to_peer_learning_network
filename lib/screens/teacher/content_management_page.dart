@@ -86,6 +86,45 @@ class _ContentManagementPageState extends State<ContentManagementPage> {
     }
   }
 
+  Future<void> _deleteFile(File file) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirm Deletion'),
+        content: Text('Are you sure you want to permanently delete "${path.basename(file.path)}"? This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await file.delete();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('"${path.basename(file.path)}" was deleted.')),
+          );
+        }
+        // Refresh the content lists to reflect the deletion
+        await _loadAllContent();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error deleting file: $e')),
+          );
+        }
+      }
+    }
+  }
+
   Future<void> _uploadNote() async {
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -271,12 +310,17 @@ class _ContentManagementPageState extends State<ContentManagementPage> {
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             subtitle: Text(file.parent.path.split('/').last),
+            // UPDATED: Trailing widget is now conditional
             trailing: widget.isSelectionMode
                 ? Icon(
               isSelected ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
               color: Colors.indigo,
             )
-                : const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                : IconButton(
+              icon: Icon(Icons.delete_outline_rounded, color: Colors.red.shade400),
+              onPressed: () => _deleteFile(file),
+              tooltip: 'Delete Quiz',
+            ),
             onTap: () => _onFileTap(file),
           ),
         );
@@ -298,7 +342,7 @@ class _ContentManagementPageState extends State<ContentManagementPage> {
           if (ext.endsWith('.pdf')) return Icons.picture_as_pdf_rounded;
           if (ext.endsWith('.mp4')) return Icons.video_library_rounded;
           if (ext.endsWith('.jpg') || ext.endsWith('.jpeg') || ext.endsWith('.png')) return Icons.image_rounded;
-          return Icons.note_alt_rounded;
+          return Icons.note_alt_rounded; // Default icon
         }
 
         Color getColorForFile(String fileName) {
@@ -306,7 +350,7 @@ class _ContentManagementPageState extends State<ContentManagementPage> {
           if (ext.endsWith('.pdf')) return Colors.red;
           if (ext.endsWith('.mp4')) return Colors.orange;
           if (ext.endsWith('.jpg') || ext.endsWith('.jpeg') || ext.endsWith('.png')) return Colors.purple;
-          return Colors.blue;
+          return Colors.blue; // Default color
         }
 
         return Card(
@@ -324,13 +368,17 @@ class _ContentManagementPageState extends State<ContentManagementPage> {
               noteTitle,
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
-            subtitle: Text('${(file.lengthSync() / 1024).toStringAsFixed(2)} KB'),
+            subtitle: Text(file.parent.path.split('/').last),
             trailing: widget.isSelectionMode
                 ? Icon(
               isSelected ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
               color: Colors.indigo,
             )
-                : const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                : IconButton(
+              icon: Icon(Icons.delete_outline_rounded, color: Colors.red.shade400),
+              onPressed: () => _deleteFile(file),
+              tooltip: 'Delete Note',
+            ),
             onTap: () => _onFileTap(file),
           ),
         );
